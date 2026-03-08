@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0F172A">
+<title>HAKOBU - ドライバー追跡</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0F172A; font-family: 'Noto Sans JP', sans-serif; color: #CBD5E1; min-height: 100vh; overflow-x: hidden; }
+
+/* Header */
+.header { background: linear-gradient(135deg, #0C1222 0%, #1A2744 60%, #2D1B4E 100%); padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); position: relative; z-index: 1000; }
+.header h1 { font-size: 18px; font-weight: 900; color: #F97316; letter-spacing: 2px; }
+.header-sub { color: #64748B; font-size: 11px; letter-spacing: 1px; }
+.mode-toggle { display: flex; gap: 0; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 2px; }
+.mode-btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; color: #64748B; background: none; transition: all 0.2s; }
+.mode-btn.active { background: #F97316; color: #fff; }
+
+/* Map */
+#map { width: 100%; height: 55vh; min-height: 300px; }
+.leaflet-container { background: #0F172A; }
+
+/* Bottom Panel */
+.panel { background: #0F172A; border-top: 1px solid #1F2937; flex: 1; overflow-y: auto; }
+.panel-header { padding: 12px 16px 8px; display: flex; justify-content: space-between; align-items: center; }
+.panel-header h2 { color: #F1F5F9; font-size: 15px; font-weight: 800; }
+.live-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); border-radius: 20px; padding: 3px 10px; font-size: 10px; color: #EF4444; font-weight: 700; letter-spacing: 0.5px; }
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #EF4444; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }
+
+/* Driver Cards */
+.driver-list { padding: 0 12px 80px; display: flex; flex-direction: column; gap: 8px; }
+.driver-card { background: linear-gradient(135deg, rgba(17,24,39,0.9), rgba(30,41,59,0.8)); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; cursor: pointer; transition: all 0.2s; }
+.driver-card:hover { border-color: rgba(249,115,22,0.3); }
+.driver-card.selected { border-color: #F97316; box-shadow: 0 0 20px rgba(249,115,22,0.15); }
+.driver-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.driver-name { color: #F1F5F9; font-size: 14px; font-weight: 700; }
+.driver-job { color: #94A3B8; font-size: 11px; margin-top: 2px; }
+.status-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.status-driving { background: rgba(16,185,129,0.12); color: #10B981; border: 1px solid rgba(16,185,129,0.25); }
+.status-loading { background: rgba(59,130,246,0.12); color: #3B82F6; border: 1px solid rgba(59,130,246,0.25); }
+.status-resting { background: rgba(245,158,11,0.12); color: #F59E0B; border: 1px solid rgba(245,158,11,0.25); }
+.status-arrived { background: rgba(139,92,246,0.12); color: #8B5CF6; border: 1px solid rgba(139,92,246,0.25); }
+
+.progress-section { margin-bottom: 8px; }
+.progress-bar-bg { width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.progress-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+.progress-labels { display: flex; justify-content: space-between; margin-top: 4px; }
+.progress-label { font-size: 9px; color: #64748B; }
+.progress-pct { font-size: 11px; font-weight: 800; }
+
+.driver-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+.stat { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #94A3B8; }
+.stat-icon { font-size: 12px; }
+
+/* Driver-side tracking UI */
+.tracking-driver { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.tracking-status-card { background: linear-gradient(135deg, rgba(17,24,39,0.9), rgba(30,41,59,0.8)); border-radius: 16px; padding: 20px; border: 1px solid rgba(255,255,255,0.05); text-align: center; }
+.tracking-big-status { font-size: 40px; margin-bottom: 8px; }
+.tracking-status-text { color: #F1F5F9; font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+.tracking-status-sub { color: #64748B; font-size: 12px; }
+.status-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.status-btn { padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(17,24,39,0.8); color: #CBD5E1; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: all 0.2s; }
+.status-btn:hover { border-color: rgba(249,115,22,0.3); }
+.status-btn.active { border-color: #F97316; background: rgba(249,115,22,0.08); color: #F97316; }
+.status-btn-icon { font-size: 24px; }
+.tracking-info { background: linear-gradient(135deg, rgba(17,24,39,0.9), rgba(30,41,59,0.8)); border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.05); }
+.tracking-info-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.tracking-info-row:last-child { border-bottom: none; }
+.info-label { color: #64748B; font-size: 12px; }
+.info-value { color: #E2E8F0; font-size: 12px; font-weight: 600; }
+.gps-btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 15px; font-weight: 800; cursor: pointer; font-family: inherit; letter-spacing: 1px; transition: all 0.2s; }
+.gps-btn.on { background: linear-gradient(135deg, #EF4444, #DC2626); color: #fff; box-shadow: 0 4px 20px rgba(239,68,68,0.3); }
+.gps-btn.off { background: linear-gradient(135deg, #10B981, #059669); color: #fff; box-shadow: 0 4px 20px rgba(16,185,129,0.3); }
+
+/* Responsive */
+@media (min-width: 768px) {
+  body { display: flex; flex-direction: column; }
+  .main-content { display: flex; flex: 1; }
+  #map { width: 60%; height: calc(100vh - 52px); }
+  .panel { width: 40%; height: calc(100vh - 52px); overflow-y: auto; }
+}
+
+/* Truck icon on map */
+.truck-marker { background: none; border: none; }
+.truck-icon { font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); transition: transform 0.3s; }
+.pickup-icon, .dropoff-icon { font-size: 20px; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4)); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <h1>🚛 HAKOBU <span style="color:#94A3B8;font-size:11px;font-weight:400;letter-spacing:0">追跡</span></h1>
+    <div class="header-sub">リアルタイム ドライバー追跡</div>
+  </div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" onclick="switchMode('company')" id="btn-company">事業者</button>
+    <button class="mode-btn" onclick="switchMode('driver')" id="btn-driver">ドライバー</button>
+  </div>
+</div>
+
+<!-- Company View: Map + Driver List -->
+<div id="company-view">
+  <div class="main-content">
+    <div id="map"></div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>稼働中ドライバー</h2>
+        <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+      </div>
+      <div class="driver-list" id="driver-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Driver View: Tracking Controls -->
+<div id="driver-view" style="display:none;">
+  <div id="driver-map" style="width:100%;height:35vh;min-height:200px;"></div>
+  <div class="tracking-driver" id="driver-controls"></div>
+</div>
+
+<script>
+// ============================================
+// Mock Driver Data (simulated real-time positions)
+// ============================================
+const MOCK_DRIVERS = [
+  {
+    id: 'd1', name: '田中 太郎', avatar: '🚛',
+    job: '10tウイング 倉庫間輸送', company: '大和物流株式会社',
+    status: 'driving', statusLabel: '走行中',
+    pickup: { lat: 34.6784, lng: 135.5853, label: '東大阪物流センター' },
+    dropoff: { lat: 34.6871, lng: 135.1960, label: '神戸港コンテナターミナル' },
+    current: { lat: 34.6950, lng: 135.4200 },
+    speed: 72, heading: 250,
+    progress: 58, eta: '14:23',
+    startTime: '08:15', elapsed: '2h 08m',
+    distance: { total: 65, done: 37.7 },
+    vehicle: '日野プロフィア / 大阪 100 あ 1234',
+    trailColor: '#10B981',
+  },
+  {
+    id: 'd2', name: '佐藤 健一', avatar: '🚜',
+    job: 'ダンプ 土砂運搬', company: '関西建設運輸',
+    status: 'loading', statusLabel: '積込中',
+    pickup: { lat: 34.5308, lng: 135.5502, label: '堺市美原区 採石場' },
+    dropoff: { lat: 34.5103, lng: 135.4555, label: '堺市西区 造成現場' },
+    current: { lat: 34.5308, lng: 135.5502 },
+    speed: 0, heading: 0,
+    progress: 72, eta: '15:40',
+    startTime: '07:00', elapsed: '3h 23m',
+    distance: { total: 15, done: 10.8 },
+    vehicle: 'いすゞギガ ダンプ / 堺 200 か 5678',
+    trailColor: '#3B82F6',
+  },
+  {
+    id: 'd3', name: '山本 修', avatar: '🛢️',
+    job: 'タンクローリー 石油配送', company: '日本ケミカル輸送',
+    status: 'driving', statusLabel: '走行中',
+    pickup: { lat: 34.6503, lng: 135.4283, label: '大阪港 油槽所' },
+    dropoff: { lat: 34.7770, lng: 135.5370, label: '豊中市 GS' },
+    current: { lat: 34.7200, lng: 135.4900 },
+    speed: 48, heading: 30,
+    progress: 65, eta: '13:50',
+    startTime: '06:00', elapsed: '4h 23m',
+    distance: { total: 120, done: 78 },
+    vehicle: '日野プロフィア タンクローリー / 大阪 800 さ 9012',
+    trailColor: '#F59E0B',
+  },
+  {
+    id: 'd4', name: '鈴木 大輔', avatar: '🔗',
+    job: '海コン トレーラー輸送', company: '港湾コンテナサービス',
+    status: 'resting', statusLabel: '休憩中',
+    pickup: { lat: 34.6133, lng: 135.4130, label: '南港コンテナターミナル' },
+    dropoff: { lat: 34.7370, lng: 135.5870, label: '門真市 物流倉庫' },
+    current: { lat: 34.6650, lng: 135.5100 },
+    speed: 0, heading: 0,
+    progress: 45, eta: '14:50',
+    startTime: '05:00', elapsed: '5h 23m',
+    distance: { total: 30, done: 13.5 },
+    vehicle: 'UDクオン ヘッド / なにわ 100 た 3456',
+    trailColor: '#8B5CF6',
+  },
+];
+
+// ============================================
+// Company View: Map + Driver List
+// ============================================
+let map, driverMap;
+let markers = {};
+let selectedDriver = null;
+let routeLines = {};
+let trailLines = {};
+
+function initCompanyMap() {
+  map = L.map('map', {
+    center: [34.65, 135.45],
+    zoom: 11,
+    zoomControl: false,
+    attributionControl: false,
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+  }).addTo(map);
+
+  L.control.zoom({ position: 'topright' }).addTo(map);
+
+  MOCK_DRIVERS.forEach(d => addDriverToMap(d));
+  renderDriverList();
+}
+
+function createTruckIcon(emoji, selected) {
+  return L.divIcon({
+    className: 'truck-marker',
+    html: `<div class="truck-icon" style="transform:scale(${selected ? 1.3 : 1});">${emoji}</div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+  });
+}
+
+function addDriverToMap(driver) {
+  // Current position marker
+  const marker = L.marker([driver.current.lat, driver.current.lng], {
+    icon: createTruckIcon(driver.avatar, false),
+  }).addTo(map);
+
+  marker.bindPopup(`
+    <div style="font-family:'Noto Sans JP',sans-serif;min-width:180px;">
+      <strong>${driver.name}</strong><br>
+      <span style="color:#666;font-size:12px;">${driver.job}</span><br>
+      <span style="font-size:12px;">速度: ${driver.speed} km/h | 進捗: ${driver.progress}%</span>
+    </div>
+  `);
+
+  markers[driver.id] = marker;
+
+  // Pickup marker
+  const pickupIcon = L.divIcon({ className: 'truck-marker', html: '<div class="pickup-icon">📍</div>', iconSize: [24, 24], iconAnchor: [12, 12] });
+  L.marker([driver.pickup.lat, driver.pickup.lng], { icon: pickupIcon }).addTo(map)
+    .bindPopup(`<strong>積込地:</strong> ${driver.pickup.label}`);
+
+  // Dropoff marker
+  const dropoffIcon = L.divIcon({ className: 'truck-marker', html: '<div class="dropoff-icon">🏁</div>', iconSize: [24, 24], iconAnchor: [12, 12] });
+  L.marker([driver.dropoff.lat, driver.dropoff.lng], { icon: dropoffIcon }).addTo(map)
+    .bindPopup(`<strong>荷降地:</strong> ${driver.dropoff.label}`);
+
+  // Route line (pickup → current → dropoff)
+  const routeLine = L.polyline([
+    [driver.pickup.lat, driver.pickup.lng],
+    [driver.current.lat, driver.current.lng],
+  ], { color: driver.trailColor, weight: 3, opacity: 0.8, dashArray: null }).addTo(map);
+
+  const remainingLine = L.polyline([
+    [driver.current.lat, driver.current.lng],
+    [driver.dropoff.lat, driver.dropoff.lng],
+  ], { color: driver.trailColor, weight: 2, opacity: 0.3, dashArray: '8 6' }).addTo(map);
+
+  routeLines[driver.id] = { done: routeLine, remaining: remainingLine };
+}
+
+function selectDriver(id) {
+  selectedDriver = id;
+  const driver = MOCK_DRIVERS.find(d => d.id === id);
+  if (driver) {
+    map.flyTo([driver.current.lat, driver.current.lng], 13, { duration: 0.8 });
+    Object.keys(markers).forEach(k => {
+      const d = MOCK_DRIVERS.find(x => x.id === k);
+      markers[k].setIcon(createTruckIcon(d.avatar, k === id));
+    });
+  }
+  renderDriverList();
+}
+
+function renderDriverList() {
+  const container = document.getElementById('driver-list');
+  container.innerHTML = MOCK_DRIVERS.map(d => {
+    const isSelected = d.id === selectedDriver;
+    const statusClass = `status-${d.status}`;
+    const progressColor = d.trailColor;
+    return `
+      <div class="driver-card ${isSelected ? 'selected' : ''}" onclick="selectDriver('${d.id}')">
+        <div class="driver-top">
+          <div>
+            <div class="driver-name">${d.avatar} ${d.name}</div>
+            <div class="driver-job">${d.job}</div>
+          </div>
+          <span class="status-badge ${statusClass}">${d.statusLabel}</span>
+        </div>
+        <div class="progress-section">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width:${d.progress}%;background:${progressColor};"></div>
+          </div>
+          <div class="progress-labels">
+            <span class="progress-label">${d.pickup.label}</span>
+            <span class="progress-pct" style="color:${progressColor}">${d.progress}%</span>
+            <span class="progress-label">${d.dropoff.label}</span>
+          </div>
+        </div>
+        <div class="driver-stats">
+          <div class="stat"><span class="stat-icon">🏎️</span> ${d.speed} km/h</div>
+          <div class="stat"><span class="stat-icon">📏</span> ${d.distance.done}/${d.distance.total} km</div>
+          <div class="stat"><span class="stat-icon">⏰</span> ETA ${d.eta}</div>
+          <div class="stat"><span class="stat-icon">🕐</span> ${d.elapsed}</div>
+        </div>
+        ${isSelected ? `
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span style="color:#64748B;font-size:11px;">車両</span>
+              <span style="color:#E2E8F0;font-size:11px;">${d.vehicle}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span style="color:#64748B;font-size:11px;">出発時刻</span>
+              <span style="color:#E2E8F0;font-size:11px;">${d.startTime}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:#64748B;font-size:11px;">所属</span>
+              <span style="color:#E2E8F0;font-size:11px;">${d.company}</span>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================
+// Driver View: GPS Tracking Controls
+// ============================================
+let driverTracking = false;
+let driverWatchId = null;
+let driverStatus = 'driving';
+let driverPositions = [];
+
+function initDriverMap() {
+  if (driverMap) return;
+  driverMap = L.map('driver-map', {
+    center: [34.69, 135.50],
+    zoom: 14,
+    zoomControl: false,
+    attributionControl: false,
+  });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+  }).addTo(driverMap);
+}
+
+function renderDriverControls() {
+  const container = document.getElementById('driver-controls');
+  const statuses = [
+    { id: 'driving', icon: '🚛', label: '走行中' },
+    { id: 'loading', icon: '📦', label: '積込/荷降' },
+    { id: 'resting', icon: '☕', label: '休憩中' },
+    { id: 'arrived', icon: '🏁', label: '到着' },
+  ];
+
+  container.innerHTML = `
+    <div class="tracking-status-card">
+      <div class="tracking-big-status">${driverTracking ? '📡' : '📴'}</div>
+      <div class="tracking-status-text">${driverTracking ? 'GPS送信中' : 'GPS停止中'}</div>
+      <div class="tracking-status-sub">${driverTracking ? '事業者にリアルタイムで位置情報を共有しています' : 'GPSをオンにすると事業者があなたの位置を確認できます'}</div>
+    </div>
+
+    <button class="gps-btn ${driverTracking ? 'on' : 'off'}" onclick="toggleTracking()">
+      ${driverTracking ? '⏹ GPS送信を停止する' : '▶ GPS送信を開始する'}
+    </button>
+
+    <div style="color:#F97316;font-size:13px;font-weight:700;margin-top:4px;">現在のステータス</div>
+    <div class="status-buttons">
+      ${statuses.map(s => `
+        <button class="status-btn ${driverStatus === s.id ? 'active' : ''}" onclick="setDriverStatus('${s.id}')">
+          <span class="status-btn-icon">${s.icon}</span>
+          ${s.label}
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="tracking-info">
+      <div class="tracking-info-row">
+        <span class="info-label">送信間隔</span>
+        <span class="info-value">10秒ごと</span>
+      </div>
+      <div class="tracking-info-row">
+        <span class="info-label">送信回数</span>
+        <span class="info-value">${driverPositions.length} 回</span>
+      </div>
+      <div class="tracking-info-row">
+        <span class="info-label">バッテリー節約</span>
+        <span class="info-value" style="color:#10B981;">オン</span>
+      </div>
+      <div class="tracking-info-row">
+        <span class="info-label">精度</span>
+        <span class="info-value">GPS (高精度)</span>
+      </div>
+    </div>
+
+    <div style="background:rgba(245,158,11,0.08);border-radius:10px;padding:12px;border:1px solid rgba(245,158,11,0.15);">
+      <div style="color:#F59E0B;font-size:11px;font-weight:700;margin-bottom:4px;">⚠️ プライバシーについて</div>
+      <div style="color:#CBD5E1;font-size:11px;line-height:1.6;">
+        位置情報は勤務中の事業者にのみ共有されます。勤務時間外は一切追跡されません。GPS送信はいつでも停止できます。
+      </div>
+    </div>
+  `;
+}
+
+function toggleTracking() {
+  driverTracking = !driverTracking;
+
+  if (driverTracking) {
+    // Start GPS tracking
+    if ('geolocation' in navigator) {
+      driverWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, speed, heading } = pos.coords;
+          driverPositions.push({ lat: latitude, lng: longitude, time: Date.now() });
+
+          // Update driver map
+          if (driverMap) {
+            driverMap.setView([latitude, longitude], 15);
+
+            // Add/update marker
+            if (window._driverMarker) {
+              window._driverMarker.setLatLng([latitude, longitude]);
+            } else {
+              window._driverMarker = L.marker([latitude, longitude], {
+                icon: L.divIcon({
+                  className: 'truck-marker',
+                  html: '<div class="truck-icon" style="filter:drop-shadow(0 0 8px #F97316);">🚛</div>',
+                  iconSize: [36, 36], iconAnchor: [18, 18],
+                })
+              }).addTo(driverMap);
+            }
+
+            // Draw trail
+            if (driverPositions.length > 1) {
+              const lastTwo = driverPositions.slice(-2);
+              L.polyline([[lastTwo[0].lat, lastTwo[0].lng], [lastTwo[1].lat, lastTwo[1].lng]], {
+                color: '#F97316', weight: 3, opacity: 0.7
+              }).addTo(driverMap);
+            }
+          }
+
+          renderDriverControls();
+        },
+        (err) => {
+          console.log('GPS error:', err.message);
+          // Simulate position for demo
+          simulatePosition();
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      );
+    } else {
+      simulatePosition();
+    }
+  } else {
+    // Stop tracking
+    if (driverWatchId) {
+      navigator.geolocation.clearWatch(driverWatchId);
+      driverWatchId = null;
+    }
+    if (window._simInterval) {
+      clearInterval(window._simInterval);
+      window._simInterval = null;
+    }
+  }
+
+  renderDriverControls();
+}
+
+function simulatePosition() {
+  // Demo: simulate moving position
+  let lat = 34.6950, lng = 135.4200;
+  window._simInterval = setInterval(() => {
+    if (!driverTracking) return;
+    lat += (Math.random() - 0.4) * 0.002;
+    lng += (Math.random() - 0.3) * 0.003;
+    driverPositions.push({ lat, lng, time: Date.now() });
+
+    if (driverMap) {
+      driverMap.setView([lat, lng], 15);
+      if (window._driverMarker) {
+        window._driverMarker.setLatLng([lat, lng]);
+      } else {
+        window._driverMarker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: 'truck-marker',
+            html: '<div class="truck-icon" style="filter:drop-shadow(0 0 8px #F97316);">🚛</div>',
+            iconSize: [36, 36], iconAnchor: [18, 18],
+          })
+        }).addTo(driverMap);
+      }
+      if (driverPositions.length > 1) {
+        const lastTwo = driverPositions.slice(-2);
+        L.polyline([[lastTwo[0].lat, lastTwo[0].lng], [lastTwo[1].lat, lastTwo[1].lng]], {
+          color: '#F97316', weight: 3, opacity: 0.7
+        }).addTo(driverMap);
+      }
+    }
+    renderDriverControls();
+  }, 3000);
+}
+
+function setDriverStatus(status) {
+  driverStatus = status;
+  renderDriverControls();
+}
+
+// ============================================
+// Mode Switching
+// ============================================
+function switchMode(mode) {
+  document.getElementById('btn-company').classList.toggle('active', mode === 'company');
+  document.getElementById('btn-driver').classList.toggle('active', mode === 'driver');
+  document.getElementById('company-view').style.display = mode === 'company' ? 'block' : 'none';
+  document.getElementById('driver-view').style.display = mode === 'driver' ? 'block' : 'none';
+
+  if (mode === 'company') {
+    setTimeout(() => map && map.invalidateSize(), 100);
+  } else {
+    setTimeout(() => {
+      initDriverMap();
+      driverMap.invalidateSize();
+      renderDriverControls();
+    }, 100);
+  }
+}
+
+// ============================================
+// Simulate real-time updates (company view)
+// ============================================
+function simulateCompanyUpdates() {
+  setInterval(() => {
+    MOCK_DRIVERS.forEach(d => {
+      if (d.status === 'driving') {
+        d.current.lat += (Math.random() - 0.45) * 0.001;
+        d.current.lng += (Math.random() - 0.3) * 0.002;
+        d.speed = Math.max(0, d.speed + Math.floor(Math.random() * 10 - 4));
+        d.progress = Math.min(99, d.progress + Math.random() * 0.3);
+        d.distance.done = Math.round(d.distance.total * d.progress / 100 * 10) / 10;
+
+        if (markers[d.id]) {
+          markers[d.id].setLatLng([d.current.lat, d.current.lng]);
+        }
+        if (routeLines[d.id]) {
+          routeLines[d.id].done.setLatLngs([
+            [d.pickup.lat, d.pickup.lng],
+            [d.current.lat, d.current.lng],
+          ]);
+          routeLines[d.id].remaining.setLatLngs([
+            [d.current.lat, d.current.lng],
+            [d.dropoff.lat, d.dropoff.lng],
+          ]);
+        }
+      }
+    });
+    renderDriverList();
+  }, 3000);
+}
+
+// ============================================
+// Init
+// ============================================
+window.addEventListener('load', () => {
+  initCompanyMap();
+  simulateCompanyUpdates();
+});
+</script>
+</body>
+</html>
