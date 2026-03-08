@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0F172A">
+<title>HAKOBU - 事業者管理画面</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0F172A; font-family: 'Noto Sans JP', sans-serif; min-height: 100vh; color: #CBD5E1; }
+.header { background: linear-gradient(135deg, #0C1222, #1A2744); padding: 16px 20px; border-bottom: 1px solid #1F2937; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 18px; font-weight: 900; color: #F97316; letter-spacing: 2px; }
+.header span { color: #64748B; font-size: 11px; }
+.container { max-width: 600px; margin: 0 auto; padding: 20px; }
+h2 { color: #F1F5F9; font-size: 18px; font-weight: 800; margin: 0 0 20px; }
+.card { background: rgba(17,24,39,0.8); border: 1px solid rgba(255,255,255,0.05); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+.field { margin-bottom: 14px; }
+.field label { display: block; color: #94A3B8; font-size: 12px; margin-bottom: 5px; font-weight: 600; }
+.field input, .field select, .field textarea { width: 100%; padding: 10px 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #E2E8F0; font-size: 14px; outline: none; font-family: inherit; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: #F97316; }
+.field select option { background: #1E293B; }
+.field textarea { resize: vertical; min-height: 80px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.check-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.check-row label { display: flex; align-items: center; gap: 6px; color: #94A3B8; font-size: 13px; cursor: pointer; }
+.check-row input[type="checkbox"] { accent-color: #F97316; width: 16px; height: 16px; }
+.section-title { color: #F97316; font-size: 13px; font-weight: 700; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #1F2937; letter-spacing: 0.5px; }
+.btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 800; cursor: pointer; letter-spacing: 1px; font-family: inherit; }
+.btn-primary { background: linear-gradient(135deg, #F97316, #EA580C); color: #fff; box-shadow: 0 4px 20px rgba(249,115,22,0.3); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: rgba(255,255,255,0.05); color: #94A3B8; border: 1px solid #374151; margin-top: 8px; }
+.msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+.msg.error { display: block; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #EF4444; }
+.msg.success { display: block; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: #10B981; }
+.job-card { background: rgba(0,0,0,0.2); border-radius: 10px; padding: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.04); }
+.job-card h4 { color: #F1F5F9; font-size: 14px; margin-bottom: 4px; }
+.job-card .meta { color: #64748B; font-size: 11px; }
+.job-card .pay { color: #F97316; font-size: 18px; font-weight: 900; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.badge-open { background: rgba(16,185,129,0.15); color: #10B981; }
+.badge-urgent { background: rgba(239,68,68,0.15); color: #EF4444; }
+.empty { text-align: center; padding: 30px; color: #4B5563; font-size: 13px; }
+.nav { display: flex; gap: 8px; margin-bottom: 20px; }
+.nav button { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.nav button.active { background: #F97316; color: #fff; }
+.nav button:not(.active) { background: rgba(255,255,255,0.05); color: #94A3B8; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🚛 HAKOBU <span style="color:#64748B;font-size:11px;font-weight:400;letter-spacing:0;">事業者管理</span></h1>
+  <span id="user-info"></span>
+</div>
+<div class="container">
+  <div class="nav">
+    <button class="active" onclick="showSection('post')">求人投稿</button>
+    <button onclick="showSection('list')">投稿済み一覧</button>
+    <button onclick="showSection('apps')">応募管理</button>
+  </div>
+
+  <div id="message" class="msg"></div>
+
+  <!-- Post Job Section -->
+  <div id="section-post">
+    <h2>📝 新規求人を投稿</h2>
+    <div class="card">
+      <div class="section-title">基本情報</div>
+      <div class="field"><label>求人タイトル</label><input type="text" id="j-title" placeholder="例: 10tウイング 倉庫間輸送"></div>
+      <div class="row">
+        <div class="field"><label>車両タイプ</label>
+          <select id="j-vehicle">
+            <option>10tウイング</option><option>10t平ボディ</option><option>トレーラー</option>
+            <option>タンクローリー</option><option>ダンプ</option><option>ミキサー車</option>
+            <option>クレーン車</option><option>高所作業車</option><option>キャリアカー</option>
+            <option>冷凍冷蔵車</option><option>海上コンテナ</option>
+          </select>
+        </div>
+        <div class="field"><label>日給（円）</label><input type="number" id="j-pay" placeholder="25000"></div>
+      </div>
+      <div class="row3">
+        <div class="field"><label>日付</label><input type="date" id="j-date"></div>
+        <div class="field"><label>開始時間</label><input type="time" id="j-start" value="08:00"></div>
+        <div class="field"><label>終了時間</label><input type="time" id="j-end" value="17:00"></div>
+      </div>
+      <div class="field"><label>エリア</label><input type="text" id="j-area" placeholder="例: 大阪府 東大阪市"></div>
+
+      <div class="section-title">ルート・積荷情報</div>
+      <div class="field"><label>積込地</label><input type="text" id="j-pickup" placeholder="例: 東大阪物流センター"></div>
+      <div class="field"><label>荷降地</label><input type="text" id="j-dropoff" placeholder="例: 神戸港コンテナターミナル"></div>
+      <div class="row">
+        <div class="field"><label>距離</label><input type="text" id="j-distance" placeholder="例: 約65km"></div>
+        <div class="field"><label>積荷</label><input type="text" id="j-cargo" placeholder="例: 食品・飲料"></div>
+      </div>
+      <div class="field"><label>積込方法</label><input type="text" id="j-loading" placeholder="例: パレット積み（フォークリフト有）"></div>
+      <div class="field"><label>使用車両</label><input type="text" id="j-spec" placeholder="例: 日野プロフィア 2022年式"></div>
+
+      <div class="section-title">必要資格（該当するものにチェック）</div>
+      <div class="check-row">
+        <label><input type="checkbox" value="large"> 大型免許</label>
+        <label><input type="checkbox" value="large_special"> 大型特殊</label>
+        <label><input type="checkbox" value="trailer"> けん引</label>
+        <label><input type="checkbox" value="hazmat"> 危険物</label>
+        <label><input type="checkbox" value="crane"> クレーン</label>
+        <label><input type="checkbox" value="forklift"> フォークリフト</label>
+        <label><input type="checkbox" value="tank"> タンクローリー</label>
+        <label><input type="checkbox" value="dump"> 不整地運搬車</label>
+      </div>
+
+      <div class="section-title">オプション</div>
+      <div class="check-row">
+        <label><input type="checkbox" id="j-highway"> 高速道路利用あり</label>
+        <label><input type="checkbox" id="j-night"> 夜間走行あり</label>
+        <label><input type="checkbox" id="j-overtime"> 残業可能性あり</label>
+        <label><input type="checkbox" id="j-urgent"> 🔥 急募にする</label>
+        <label><input type="checkbox" id="j-repeat"> リピート可</label>
+      </div>
+
+      <div class="section-title">詳細説明</div>
+      <div class="field"><label>仕事の詳細</label><textarea id="j-desc" placeholder="仕事の詳細や注意事項を記入してください"></textarea></div>
+
+      <button class="btn btn-primary" onclick="postJob()" id="post-btn">この内容で求人を投稿する</button>
+    </div>
+  </div>
+
+  <!-- Job List Section -->
+  <div id="section-list" style="display:none;">
+    <h2>📋 投稿済み求人</h2>
+    <div id="my-jobs"></div>
+  </div>
+
+  <!-- Applications Section -->
+  <div id="section-apps" style="display:none;">
+    <h2>📨 応募一覧</h2>
+    <div id="my-apps"><div class="empty">応募はまだありません</div></div>
+  </div>
+</div>
+
+<script>
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentUser = null;
+let currentCompany = null;
+
+async function init() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { window.location.href = 'login.html'; return; }
+  currentUser = session.user;
+  document.getElementById('user-info').textContent = currentUser.email;
+
+  const { data: company } = await supabase.from('companies').select('*').eq('user_id', currentUser.id).single();
+  if (company) {
+    currentCompany = company;
+  }
+  loadMyJobs();
+}
+
+function showSection(id) {
+  ['post','list','apps'].forEach(s => {
+    document.getElementById('section-' + s).style.display = s === id ? 'block' : 'none';
+  });
+  document.querySelectorAll('.nav button').forEach((b, i) => {
+    b.classList.toggle('active', (id === 'post' && i === 0) || (id === 'list' && i === 1) || (id === 'apps' && i === 2));
+  });
+  if (id === 'list') loadMyJobs();
+  if (id === 'apps') loadApplications();
+}
+
+function showMsg(text, type) {
+  const msg = document.getElementById('message');
+  msg.textContent = text; msg.className = 'msg ' + type;
+  setTimeout(() => { msg.className = 'msg'; }, 5000);
+}
+
+async function postJob() {
+  if (!currentCompany) { showMsg('事業者情報が見つかりません。事業者アカウントでログインしてください。', 'error'); return; }
+
+  const licenses = Array.from(document.querySelectorAll('.check-row input[type="checkbox"][value]'))
+    .filter(c => c.checked).map(c => c.value);
+
+  const jobData = {
+    company_id: currentCompany.id,
+    title: document.getElementById('j-title').value,
+    vehicle_type: document.getElementById('j-vehicle').value,
+    pay: parseInt(document.getElementById('j-pay').value) || 0,
+    date: document.getElementById('j-date').value,
+    time_start: document.getElementById('j-start').value,
+    time_end: document.getElementById('j-end').value,
+    hours: 8,
+    area: document.getElementById('j-area').value,
+    pickup_location: document.getElementById('j-pickup').value,
+    dropoff_location: document.getElementById('j-dropoff').value,
+    distance: document.getElementById('j-distance').value,
+    cargo: document.getElementById('j-cargo').value,
+    loading_method: document.getElementById('j-loading').value,
+    vehicle_spec: document.getElementById('j-spec').value,
+    required_licenses: licenses,
+    has_highway: document.getElementById('j-highway').checked,
+    has_night_drive: document.getElementById('j-night').checked,
+    has_overtime: document.getElementById('j-overtime').checked,
+    is_urgent: document.getElementById('j-urgent').checked,
+    repeat_available: document.getElementById('j-repeat').checked,
+    description: document.getElementById('j-desc').value,
+  };
+
+  if (!jobData.title || !jobData.date || !jobData.pay) {
+    showMsg('タイトル、日付、日給は必須です', 'error'); return;
+  }
+
+  const btn = document.getElementById('post-btn');
+  btn.disabled = true; btn.textContent = '投稿中...';
+
+  const { error } = await supabase.from('jobs').insert(jobData);
+  if (error) {
+    showMsg('投稿に失敗しました: ' + error.message, 'error');
+  } else {
+    showMsg('求人を投稿しました！', 'success');
+    document.querySelectorAll('.card input, .card textarea, .card select').forEach(el => {
+      if (el.type === 'checkbox') el.checked = false;
+      else el.value = '';
+    });
+  }
+  btn.disabled = false; btn.textContent = 'この内容で求人を投稿する';
+}
+
+async function loadMyJobs() {
+  if (!currentCompany) return;
+  const { data: jobs } = await supabase.from('jobs').select('*').eq('company_id', currentCompany.id).order('created_at', { ascending: false });
+  const container = document.getElementById('my-jobs');
+  if (!jobs || jobs.length === 0) {
+    container.innerHTML = '<div class="empty">まだ求人を投稿していません</div>';
+    return;
+  }
+  container.innerHTML = jobs.map(j => `
+    <div class="job-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <h4>${j.title}</h4>
+          <div class="meta">${j.date} / ${j.area}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="pay">¥${j.pay.toLocaleString()}</div>
+          <span class="badge ${j.is_urgent ? 'badge-urgent' : 'badge-open'}">${j.is_urgent ? '急募' : '公開中'}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadApplications() {
+  if (!currentCompany) return;
+  const { data } = await supabase.from('applications')
+    .select('*, jobs(*), drivers(*)')
+    .in('job_id', (await supabase.from('jobs').select('id').eq('company_id', currentCompany.id)).data?.map(j => j.id) || []);
+
+  const container = document.getElementById('my-apps');
+  if (!data || data.length === 0) {
+    container.innerHTML = '<div class="empty">応募はまだありません</div>';
+    return;
+  }
+  container.innerHTML = data.map(a => `
+    <div class="job-card">
+      <h4>${a.drivers?.name || '不明'}</h4>
+      <div class="meta">求人: ${a.jobs?.title || '不明'} / 応募日: ${new Date(a.applied_at).toLocaleDateString('ja-JP')}</div>
+      <div class="meta">ステータス: ${a.status}</div>
+    </div>
+  `).join('');
+}
+
+init();
+</script>
+</body>
+</html>

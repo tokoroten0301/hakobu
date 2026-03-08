@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0F172A">
+<title>HAKOBU - ドライバー単発バイト</title>
+<meta name="description" content="大型トラック・特殊車両ドライバー専門の単発バイトアプリ HAKOBU（ハコブ）">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚛</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+body { background: #0F172A; font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif; }
+#root { display: flex; justify-content: center; }
+::-webkit-scrollbar { width: 0; }
+input, select, button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const LICENSES = [
+  { id: "large", label: "大型免許", icon: "🚛" },
+  { id: "large_special", label: "大型特殊免許", icon: "🏗️" },
+  { id: "trailer", label: "けん引免許", icon: "🔗" },
+  { id: "hazmat", label: "危険物取扱者", icon: "⚠️" },
+  { id: "crane", label: "移動式クレーン運転士", icon: "🏗️" },
+  { id: "forklift", label: "フォークリフト運転技能", icon: "📦" },
+  { id: "tank", label: "タンクローリー", icon: "🛢️" },
+  { id: "dump", label: "不整地運搬車", icon: "⛰️" },
+];
+
+const VEHICLE_TYPES = [
+  "10tウイング", "10t平ボディ", "トレーラー", "タンクローリー",
+  "ダンプ", "ミキサー車", "クレーン車", "高所作業車",
+  "キャリアカー", "冷凍冷蔵車", "海上コンテナ"
+];
+
+const MOCK_JOBS = [
+  {
+    id: 1, company: "大和物流株式会社", companyRating: 4.5, reviewCount: 128,
+    title: "10tウイング 倉庫間輸送", vehicleType: "10tウイング",
+    date: "2026/03/10（火）", timeSlot: "08:00〜17:00", hours: 8,
+    pay: 22000, payType: "日給", area: "大阪府 東大阪市",
+    pickup: "東大阪物流センター", dropoff: "神戸港コンテナターミナル",
+    distance: "約65km", requiredLicenses: ["large"],
+    loading: "パレット積み（フォークリフト有）", cargo: "食品・飲料",
+    hasHighway: true, hasNightDrive: false, hasOvertime: false,
+    description: "倉庫間の定期便です。積込み・荷降ろしはフォーク対応。高速代・燃料費は会社負担。",
+    vehicleSpec: "日野プロフィア 2022年式 / デジタコ・ドラレコ搭載",
+    urgent: false, repeatAvailable: true,
+  },
+  {
+    id: 2, company: "関西建設運輸", companyRating: 4.2, reviewCount: 56,
+    title: "ダンプ 土砂運搬（現場直行）", vehicleType: "ダンプ",
+    date: "2026/03/09（月）", timeSlot: "07:00〜16:00", hours: 8,
+    pay: 25000, payType: "日給", area: "大阪府 堺市",
+    pickup: "堺市美原区 採石場", dropoff: "堺市西区 造成現場",
+    distance: "約15km（往復複数回）", requiredLicenses: ["large", "dump"],
+    loading: "ショベル積込み（待機あり）", cargo: "土砂・砕石",
+    hasHighway: false, hasNightDrive: false, hasOvertime: true,
+    description: "造成工事現場への土砂運搬。1日5〜7往復程度。現場にて誘導員あり。",
+    vehicleSpec: "いすゞギガ ダンプ 10t / 2020年式",
+    urgent: true, repeatAvailable: true,
+  },
+  {
+    id: 3, company: "日本ケミカル輸送", companyRating: 4.8, reviewCount: 203,
+    title: "タンクローリー 石油製品配送", vehicleType: "タンクローリー",
+    date: "2026/03/11（水）", timeSlot: "06:00〜15:00", hours: 8,
+    pay: 28000, payType: "日給", area: "大阪府 大阪市港区",
+    pickup: "大阪港 油槽所", dropoff: "府内ガソリンスタンド（3箇所）",
+    distance: "約120km（ルート配送）", requiredLicenses: ["large", "hazmat", "tank"],
+    loading: "ローリー充填（有資格作業）", cargo: "ガソリン・軽油",
+    hasHighway: true, hasNightDrive: false, hasOvertime: false,
+    description: "石油製品のルート配送。危険物取扱者必須。荷降ろし手順は事前研修あり。",
+    vehicleSpec: "日野プロフィア タンクローリー16kL / 2021年式 / ADR対応",
+    urgent: false, repeatAvailable: false,
+  },
+  {
+    id: 4, company: "港湾コンテナサービス", companyRating: 3.9, reviewCount: 34,
+    title: "海コン トレーラー輸送", vehicleType: "海上コンテナ",
+    date: "2026/03/10（火）", timeSlot: "05:00〜14:00", hours: 8,
+    pay: 30000, payType: "日給", area: "大阪府 大阪市住之江区",
+    pickup: "南港コンテナターミナル", dropoff: "門真市 物流倉庫",
+    distance: "約30km", requiredLicenses: ["large", "trailer"],
+    loading: "ガントリークレーン（荷役待機）", cargo: "輸入雑貨（20ftコンテナ）",
+    hasHighway: true, hasNightDrive: true, hasOvertime: false,
+    description: "南港CYからのコンテナ引取り〜倉庫搬入。早朝ゲートオープン待ちあり。",
+    vehicleSpec: "UDクオン ヘッド + 40ftシャーシ / 2023年式",
+    urgent: false, repeatAvailable: true,
+  },
+  {
+    id: 5, company: "ビッグムーブ引越", companyRating: 4.1, reviewCount: 89,
+    title: "10t平ボディ 長距離幹線便", vehicleType: "10t平ボディ",
+    date: "2026/03/12（木）", timeSlot: "20:00〜翌08:00", hours: 12,
+    pay: 38000, payType: "日給", area: "大阪府 吹田市",
+    pickup: "吹田IC付近 集荷センター", dropoff: "東京都 江東区 配送センター",
+    distance: "約520km", requiredLicenses: ["large"],
+    loading: "手積み＋カゴ車", cargo: "引越荷物・家電",
+    hasHighway: true, hasNightDrive: true, hasOvertime: true,
+    description: "大阪→東京の幹線輸送。途中SA休憩あり。到着後荷降ろしまで。帰りの便は別途募集。",
+    vehicleSpec: "三菱スーパーグレート 平ボディ / 2021年式 / ベッド付き",
+    urgent: true, repeatAvailable: false,
+  },
+  {
+    id: 6, company: "クレーンマスターズ", companyRating: 4.6, reviewCount: 42,
+    title: "25tラフタークレーン 建方作業", vehicleType: "クレーン車",
+    date: "2026/03/13（金）", timeSlot: "07:30〜16:30", hours: 8,
+    pay: 35000, payType: "日給", area: "兵庫県 尼崎市",
+    pickup: "尼崎市 建設現場", dropoff: "現場作業（移動なし）",
+    distance: "現場固定", requiredLicenses: ["large_special", "crane"],
+    loading: "クレーン作業（鉄骨建方）", cargo: "鉄骨・建築資材",
+    hasHighway: false, hasNightDrive: false, hasOvertime: true,
+    description: "鉄骨造2階建ての建方作業。玉掛け作業員は別途配置。作業計画書に基づく作業。",
+    vehicleSpec: "コベルコ RK250 ラフテレーンクレーン 25t吊",
+    urgent: false, repeatAvailable: true,
+  },
+];
+
+const TABS = [
+  { id: "search", label: "求人検索", icon: "🔍" },
+  { id: "map", label: "ルート", icon: "🗺️" },
+  { id: "schedule", label: "スケジュール", icon: "📅" },
+  { id: "license", label: "免許・資格", icon: "🪪" },
+  { id: "profile", label: "マイページ", icon: "👤" },
+];
+
+function Stars({ rating, size = 14 }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 1 }}>
+      {[1,2,3,4,5].map(i => (
+        <span key={i} style={{ fontSize: size, color: i <= Math.round(rating) ? "#F59E0B" : "#4B5563" }}>★</span>
+      ))}
+    </span>
+  );
+}
+
+function Badge({ children, color = "#F97316", bg, small }) {
+  return (
+    <span style={{
+      display: "inline-block", padding: small ? "1px 6px" : "2px 8px",
+      borderRadius: 4, fontSize: small ? 10 : 11, fontWeight: 700,
+      color: color, background: bg || (color + "18"),
+      letterSpacing: 0.5, lineHeight: 1.6, whiteSpace: "nowrap",
+    }}>{children}</span>
+  );
+}
+
+function JobListScreen({ onSelectJob, userLicenses }) {
+  const [filter, setFilter] = useState("all");
+  const [searchText, setSearchText] = useState("");
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [vehicleFilter, setVehicleFilter] = useState("all");
+  const [minPay, setMinPay] = useState(0);
+  const [sortBy, setSortBy] = useState("date");
+  const [onlyUrgent, setOnlyUrgent] = useState(false);
+  const [onlyMatchLicense, setOnlyMatchLicense] = useState(false);
+
+  let jobs = MOCK_JOBS.filter(j => {
+    if (filter === "night") return j.hasNightDrive;
+    if (filter === "highway") return j.hasHighway;
+    if (filter === "urgent") return j.urgent;
+    return true;
+  });
+  if (vehicleFilter !== "all") jobs = jobs.filter(j => j.vehicleType === vehicleFilter);
+  if (minPay > 0) jobs = jobs.filter(j => j.pay >= minPay);
+  if (onlyUrgent) jobs = jobs.filter(j => j.urgent);
+  if (onlyMatchLicense) jobs = jobs.filter(j => j.requiredLicenses.every(l => userLicenses.includes(l)));
+  if (searchText) {
+    const q = searchText.toLowerCase();
+    jobs = jobs.filter(j => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q) || j.area.includes(q) || j.cargo.includes(q));
+  }
+  if (sortBy === "pay") jobs = [...jobs].sort((a, b) => b.pay - a.pay);
+
+  const quickFilters = [
+    { id: "all", label: "すべて" }, { id: "night", label: "🌙 夜勤" },
+    { id: "highway", label: "🛣️ 高速あり" }, { id: "urgent", label: "🔥 急募" },
+  ];
+
+  return (
+    <div style={{ paddingBottom: 20 }}>
+      <div style={{ background: "linear-gradient(135deg, #0C1222 0%, #1A2744 50%, #2D1B4E 100%)", padding: "18px 16px 14px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -40, right: -20, width: 160, height: 160, borderRadius: "50%", background: "radial-gradient(circle, rgba(249,115,22,0.15) 0%, transparent 70%)" }} />
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#F97316", letterSpacing: 2 }}>
+          HAKOBU<span style={{ color: "#94A3B8", fontSize: 13, fontWeight: 500, marginLeft: 8, letterSpacing: 0 }}>ハコブ</span>
+        </h1>
+        <p style={{ margin: "4px 0 12px", color: "#64748B", fontSize: 11, letterSpacing: 1 }}>大型トラック・特殊車両ドライバー専門 単発バイト</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.06)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", padding: "0 12px" }}>
+          <span style={{ fontSize: 16, opacity: 0.5 }}>🔍</span>
+          <input type="text" placeholder="エリア・車種・会社名で検索" value={searchText} onChange={e => setSearchText(e.target.value)}
+            style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#E2E8F0", fontSize: 14, padding: "10px 0" }} />
+          <button onClick={() => setShowFilterPanel(p => !p)} style={{
+            background: showFilterPanel ? "#F97316" : "rgba(255,255,255,0.08)",
+            border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer",
+            color: showFilterPanel ? "#fff" : "#94A3B8", fontSize: 12,
+          }}>絞込</button>
+        </div>
+      </div>
+
+      {showFilterPanel && (
+        <div style={{ background: "#111827", borderBottom: "1px solid #1F2937", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ color: "#94A3B8", fontSize: 11, minWidth: 50 }}>車種</span>
+            <select value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)}
+              style={{ background: "#1F2937", color: "#E2E8F0", border: "1px solid #374151", borderRadius: 6, padding: "4px 8px", fontSize: 12 }}>
+              <option value="all">すべて</option>
+              {VEHICLE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ color: "#94A3B8", fontSize: 11, minWidth: 50 }}>最低日給</span>
+            <input type="range" min={0} max={40000} step={5000} value={minPay} onChange={e => setMinPay(Number(e.target.value))} style={{ flex: 1, accentColor: "#F97316" }} />
+            <span style={{ color: "#F97316", fontSize: 12, fontWeight: 700, minWidth: 55 }}>¥{minPay.toLocaleString()}〜</span>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <label style={{ color: "#94A3B8", fontSize: 11, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <input type="checkbox" checked={onlyMatchLicense} onChange={e => setOnlyMatchLicense(e.target.checked)} style={{ accentColor: "#F97316" }} />自分の資格に合う求人のみ
+            </label>
+            <label style={{ color: "#94A3B8", fontSize: 11, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <input type="checkbox" checked={onlyUrgent} onChange={e => setOnlyUrgent(e.target.checked)} style={{ accentColor: "#F97316" }} />急募のみ
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ color: "#94A3B8", fontSize: 11, minWidth: 50 }}>並替</span>
+            {[["date","日付順"],["pay","高給順"]].map(([k,l]) => (
+              <button key={k} onClick={() => setSortBy(k)} style={{
+                background: sortBy === k ? "#F97316" : "#1F2937", color: sortBy === k ? "#fff" : "#94A3B8",
+                border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer",
+              }}>{l}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, padding: "10px 16px", overflowX: "auto", borderBottom: "1px solid #1F2937" }}>
+        {quickFilters.map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)} style={{
+            background: filter === f.id ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.04)",
+            color: filter === f.id ? "#F97316" : "#94A3B8",
+            border: filter === f.id ? "1px solid rgba(249,115,22,0.3)" : "1px solid transparent",
+            borderRadius: 20, padding: "5px 14px", fontSize: 12, whiteSpace: "nowrap", cursor: "pointer", fontWeight: filter === f.id ? 700 : 500,
+          }}>{f.label}</button>
+        ))}
+      </div>
+
+      <div style={{ padding: "10px 16px 4px", color: "#64748B", fontSize: 11 }}>{jobs.length}件の求人</div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "4px 12px" }}>
+        {jobs.map(job => (
+          <div key={job.id} onClick={() => onSelectJob(job)} style={{
+            background: "linear-gradient(135deg, rgba(17,24,39,0.9) 0%, rgba(30,41,59,0.9) 100%)",
+            borderRadius: 14, padding: "14px 14px 12px", cursor: "pointer",
+            border: job.urgent ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(255,255,255,0.05)",
+            position: "relative", overflow: "hidden",
+          }}>
+            {job.urgent && <div style={{ position: "absolute", top: 0, right: 0, background: "#EF4444", color: "#fff", fontSize: 9, fontWeight: 800, padding: "2px 10px 2px 14px", borderRadius: "0 12px 0 10px", letterSpacing: 1 }}>急募</div>}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ color: "#94A3B8", fontSize: 11 }}>{job.company}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <Stars rating={job.companyRating} size={10} />
+                <span style={{ color: "#94A3B8", fontSize: 10 }}>{job.companyRating}</span>
+              </span>
+            </div>
+            <h3 style={{ margin: "0 0 8px", color: "#F1F5F9", fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{job.title}</h3>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+              <Badge color="#3B82F6" small>{job.vehicleType}</Badge>
+              {job.hasHighway && <Badge color="#10B981" small>高速利用</Badge>}
+              {job.hasNightDrive && <Badge color="#8B5CF6" small>夜間走行</Badge>}
+              {job.hasOvertime && <Badge color="#F59E0B" small>残業可能性</Badge>}
+              {job.repeatAvailable && <Badge color="#06B6D4" small>リピート可</Badge>}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", marginBottom: 8 }}>
+              {[{ icon: "📅", text: job.date }, { icon: "⏰", text: job.timeSlot }, { icon: "📍", text: job.area }, { icon: "📏", text: job.distance }].map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, color: "#CBD5E1", fontSize: 11 }}>
+                  <span style={{ fontSize: 12 }}>{item.icon}</span>{item.text}
+                </div>
+              ))}
+            </div>
+            <div style={{ background: "rgba(0,0,0,0.25)", borderRadius: 8, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6, marginBottom: 8, fontSize: 11 }}>
+              <span style={{ color: "#10B981", fontWeight: 700 }}>積</span>
+              <span style={{ color: "#94A3B8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.pickup}</span>
+              <span style={{ color: "#64748B" }}>→</span>
+              <span style={{ color: "#EF4444", fontWeight: 700 }}>降</span>
+              <span style={{ color: "#94A3B8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.dropoff}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+              <div style={{ display: "flex", gap: 4 }}>
+                {job.requiredLicenses.map(l => {
+                  const lic = LICENSES.find(x => x.id === l);
+                  const has = userLicenses.includes(l);
+                  return <span key={l} title={lic?.label} style={{ fontSize: 13, opacity: has ? 1 : 0.3, filter: has ? "none" : "grayscale(1)" }}>{lic?.icon}</span>;
+                })}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ color: "#F97316", fontSize: 22, fontWeight: 900, letterSpacing: -0.5 }}>¥{job.pay.toLocaleString()}</span>
+                <span style={{ color: "#64748B", fontSize: 11, marginLeft: 2 }}>/{job.payType}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {jobs.length === 0 && <div style={{ textAlign: "center", padding: 40, color: "#64748B" }}><div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div><p style={{ fontSize: 14 }}>条件に合う求人が見つかりませんでした</p></div>}
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return <div style={{ marginTop: 20 }}><h4 style={{ color: "#E2E8F0", fontSize: 14, fontWeight: 700, margin: "0 0 10px", letterSpacing: 0.5 }}>{title}</h4>{children}</div>;
+}
+
+function DetailRow({ label, value }) {
+  return <div style={{ display: "flex", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}><span style={{ color: "#64748B", fontSize: 12, minWidth: 80 }}>{label}</span><span style={{ color: "#CBD5E1", fontSize: 12, flex: 1 }}>{value}</span></div>;
+}
+
+function JobDetailScreen({ job, onBack, userLicenses, onApply }) {
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const missingLicenses = job.requiredLicenses.filter(l => !userLicenses.includes(l));
+  const canApply = missingLicenses.length === 0;
+  const handleApply = () => { setApplied(true); setShowApplyModal(false); onApply(job); };
+
+  return (
+    <div style={{ paddingBottom: 80 }}>
+      <div style={{ background: "linear-gradient(135deg, #0C1222 0%, #1A2744 60%, #2D1B4E 100%)", padding: "12px 16px 16px" }}>
+        <button onClick={onBack} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 8, color: "#94A3B8", padding: "6px 12px", fontSize: 12, cursor: "pointer", marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>← 戻る</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div><div style={{ color: "#94A3B8", fontSize: 12, marginBottom: 4 }}>{job.company}</div><h2 style={{ margin: 0, color: "#F1F5F9", fontSize: 18, fontWeight: 800, lineHeight: 1.3 }}>{job.title}</h2></div>
+          <div style={{ textAlign: "right" }}><div style={{ color: "#F97316", fontSize: 26, fontWeight: 900 }}>¥{job.pay.toLocaleString()}</div><div style={{ color: "#64748B", fontSize: 11 }}>{job.payType} / {job.hours}h</div></div>
+        </div>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 10 }}>
+          <Badge color="#3B82F6">{job.vehicleType}</Badge>
+          {job.hasHighway && <Badge color="#10B981">高速利用</Badge>}
+          {job.hasNightDrive && <Badge color="#8B5CF6">夜間走行</Badge>}
+          {job.urgent && <Badge color="#EF4444">急募</Badge>}
+          {job.repeatAvailable && <Badge color="#06B6D4">リピート可</Badge>}
+        </div>
+      </div>
+      <div style={{ padding: "0 16px" }}>
+        <Section title="🚛 ルート情報">
+          <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: 12, padding: 14, border: "1px solid rgba(255,255,255,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "stretch", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 2 }}>
+                <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#10B981", boxShadow: "0 0 8px rgba(16,185,129,0.5)" }} />
+                <div style={{ flex: 1, width: 2, background: "linear-gradient(to bottom, #10B981, #EF4444)", margin: "4px 0" }} />
+                <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#EF4444", boxShadow: "0 0 8px rgba(239,68,68,0.5)" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ marginBottom: 12 }}><div style={{ color: "#10B981", fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>積込地</div><div style={{ color: "#E2E8F0", fontSize: 13, fontWeight: 600 }}>{job.pickup}</div></div>
+                <div style={{ color: "#64748B", fontSize: 11, margin: "0 0 12px", display: "flex", gap: 12 }}><span>📏 {job.distance}</span><span>⏰ {job.timeSlot}</span></div>
+                <div><div style={{ color: "#EF4444", fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>荷降地</div><div style={{ color: "#E2E8F0", fontSize: 13, fontWeight: 600 }}>{job.dropoff}</div></div>
+              </div>
+            </div>
+          </div>
+        </Section>
+        <Section title="📋 仕事詳細">
+          <DetailRow label="日時" value={`${job.date} ${job.timeSlot}`} />
+          <DetailRow label="エリア" value={job.area} />
+          <DetailRow label="積荷" value={job.cargo} />
+          <DetailRow label="積込方法" value={job.loading} />
+          <DetailRow label="車両" value={job.vehicleSpec} />
+          <div style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 1.7, marginTop: 8, padding: "8px 0", borderTop: "1px solid #1F2937" }}>{job.description}</div>
+        </Section>
+        <Section title="🪪 必要免許・資格">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {job.requiredLicenses.map(l => {
+              const lic = LICENSES.find(x => x.id === l); const has = userLicenses.includes(l);
+              return (<div key={l} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: has ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${has ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}` }}>
+                <span style={{ fontSize: 18 }}>{lic?.icon}</span><span style={{ color: "#E2E8F0", fontSize: 13, flex: 1 }}>{lic?.label}</span><span style={{ color: has ? "#10B981" : "#EF4444", fontSize: 11, fontWeight: 700 }}>{has ? "✓ 保有" : "✗ 未保有"}</span>
+              </div>);
+            })}
+          </div>
+        </Section>
+        <Section title="🏢 事業者情報">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ color: "#E2E8F0", fontSize: 14, fontWeight: 600 }}>{job.company}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Stars rating={job.companyRating} /><span style={{ color: "#F59E0B", fontSize: 13, fontWeight: 700 }}>{job.companyRating}</span><span style={{ color: "#64748B", fontSize: 11 }}>({job.reviewCount}件)</span></span>
+          </div>
+        </Section>
+        <Section title="🛡️ 安全情報">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {[{ label: "デジタコ", val: "搭載", color: "#10B981" }, { label: "ドラレコ", val: "搭載", color: "#10B981" }, { label: "高速代", val: "会社負担", color: "#3B82F6" }, { label: "燃料費", val: "会社負担", color: "#3B82F6" }].map((item, i) => (
+              <div key={i} style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "8px 10px", display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#94A3B8", fontSize: 12 }}>{item.label}</span><span style={{ color: item.color, fontSize: 12, fontWeight: 700 }}>{item.val}</span>
+              </div>
+            ))}
+          </div>
+        </Section>
+      </div>
+      <div style={{ position: "sticky", bottom: 0, padding: "12px 16px", background: "linear-gradient(to top, #0F172A 60%, transparent)" }}>
+        {applied ? <div style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 12, padding: 14, textAlign: "center", color: "#10B981", fontSize: 15, fontWeight: 700 }}>✓ 応募済み</div>
+        : <button onClick={() => canApply && setShowApplyModal(true)} disabled={!canApply} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: canApply ? "linear-gradient(135deg, #F97316, #EA580C)" : "#374151", color: canApply ? "#fff" : "#6B7280", fontSize: 16, fontWeight: 800, cursor: canApply ? "pointer" : "not-allowed", boxShadow: canApply ? "0 4px 20px rgba(249,115,22,0.4)" : "none", letterSpacing: 1 }}>
+          {canApply ? "この仕事に応募する" : `必要資格が不足しています`}
+        </button>}
+      </div>
+      {showApplyModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }} onClick={() => setShowApplyModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#1E293B", borderRadius: 16, padding: 24, maxWidth: 340, width: "100%", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <h3 style={{ color: "#F1F5F9", fontSize: 16, fontWeight: 800, margin: "0 0 12px", textAlign: "center" }}>応募確認</h3>
+            <div style={{ color: "#94A3B8", fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
+              <p style={{ margin: "0 0 8px" }}><strong style={{ color: "#E2E8F0" }}>{job.title}</strong></p>
+              <p style={{ margin: 0 }}>📅 {job.date}</p><p style={{ margin: 0 }}>⏰ {job.timeSlot}</p><p style={{ margin: 0 }}>💰 ¥{job.pay.toLocaleString()}</p>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#F59E0B" }}>※ 運行前点検・アルコールチェックは出発前に必須です</p>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowApplyModal(false)} style={{ flex: 1, padding: 12, borderRadius: 10, border: "1px solid #374151", background: "transparent", color: "#94A3B8", fontSize: 14, cursor: "pointer" }}>キャンセル</button>
+              <button onClick={handleApply} style={{ flex: 1, padding: 12, borderRadius: 10, border: "none", background: "linear-gradient(135deg, #F97316, #EA580C)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>応募する</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScheduleScreen({ appliedJobs }) {
+  const days = ["日","月","火","水","木","金","土"];
+  const today = new Date(2026, 2, 8);
+  const calendarDays = [];
+  const startOfWeek = new Date(today); startOfWeek.setDate(today.getDate() - today.getDay());
+  for (let i = 0; i < 28; i++) { const d = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i); calendarDays.push(d); }
+
+  return (
+    <div style={{ padding: 16 }}>
+      <h2 style={{ color: "#F1F5F9", fontSize: 18, fontWeight: 800, margin: "0 0 16px" }}>📅 スケジュール</h2>
+      <div style={{ background: "rgba(17,24,39,0.8)", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, textAlign: "center" }}>
+          {days.map(d => <div key={d} style={{ color: "#64748B", fontSize: 10, padding: "4px 0", fontWeight: 600 }}>{d}</div>)}
+          {calendarDays.map((d, i) => {
+            const isToday = d.toDateString() === today.toDateString();
+            return (<div key={i} style={{ padding: "8px 0", borderRadius: 8, background: isToday ? "rgba(249,115,22,0.2)" : "transparent", border: isToday ? "1px solid #F97316" : "1px solid transparent", color: d.getMonth() !== today.getMonth() ? "#374151" : isToday ? "#F97316" : "#CBD5E1", fontSize: 12, fontWeight: isToday ? 700 : 400 }}>{d.getDate()}</div>);
+          })}
+        </div>
+      </div>
+      <h3 style={{ color: "#E2E8F0", fontSize: 14, fontWeight: 700, margin: "20px 0 10px" }}>応募中の仕事</h3>
+      {appliedJobs.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: "#64748B", fontSize: 13 }}>まだ応募した仕事はありません</div>
+      : appliedJobs.map(j => (
+        <div key={j.id} style={{ background: "rgba(17,24,39,0.8)", borderRadius: 12, padding: 12, border: "1px solid rgba(16,185,129,0.2)", marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div><div style={{ color: "#F1F5F9", fontSize: 13, fontWeight: 600 }}>{j.title}</div><div style={{ color: "#94A3B8", fontSize: 11, marginTop: 2 }}>{j.date} {j.timeSlot}</div></div>
+            <Badge color="#10B981">応募済</Badge>
+          </div>
+        </div>
+      ))}
+      <div style={{ background: "rgba(139,92,246,0.08)", borderRadius: 12, padding: 14, border: "1px solid rgba(139,92,246,0.15)", marginTop: 16 }}>
+        <div style={{ color: "#8B5CF6", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>⏱️ 運転時間管理</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginTop: 10 }}>
+          {[{ label: "今週の運転", val: "16h", max: "40h" }, { label: "連続運転", val: "0h", max: "4h" }, { label: "休息期間", val: "14h", max: "8h+" }].map((item, i) => (
+            <div key={i} style={{ background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: 8, textAlign: "center" }}>
+              <div style={{ color: "#64748B", fontSize: 9 }}>{item.label}</div><div style={{ color: "#E2E8F0", fontSize: 16, fontWeight: 800 }}>{item.val}</div><div style={{ color: "#64748B", fontSize: 9 }}>上限 {item.max}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LicenseScreen({ userLicenses, setUserLicenses }) {
+  const toggle = (id) => setUserLicenses(prev => prev.includes(id) ? prev.filter(l => l !== id) : [...prev, id]);
+  return (
+    <div style={{ padding: 16 }}>
+      <h2 style={{ color: "#F1F5F9", fontSize: 18, fontWeight: 800, margin: "0 0 4px" }}>🪪 免許・資格管理</h2>
+      <p style={{ color: "#64748B", fontSize: 12, margin: "0 0 16px" }}>保有免許をタップして登録</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {LICENSES.map(lic => {
+          const has = userLicenses.includes(lic.id);
+          return (<div key={lic.id} onClick={() => toggle(lic.id)} style={{ display: "flex", alignItems: "center", gap: 12, background: has ? "rgba(249,115,22,0.08)" : "rgba(17,24,39,0.8)", border: has ? "1px solid rgba(249,115,22,0.3)" : "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 14px", cursor: "pointer" }}>
+            <span style={{ fontSize: 26 }}>{lic.icon}</span><span style={{ flex: 1, color: "#E2E8F0", fontSize: 14, fontWeight: 600 }}>{lic.label}</span>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: has ? "#F97316" : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center" }}>{has && <span style={{ color: "#fff", fontSize: 16, fontWeight: 800 }}>✓</span>}</div>
+          </div>);
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProfileScreen() {
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ background: "linear-gradient(135deg, rgba(17,24,39,0.9), rgba(30,41,59,0.9))", borderRadius: 16, padding: 20, textAlign: "center", border: "1px solid rgba(255,255,255,0.05)", marginBottom: 16 }}>
+        <div style={{ width: 64, height: 64, borderRadius: "50%", margin: "0 auto 10px", background: "linear-gradient(135deg, #F97316, #EA580C)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: "0 4px 20px rgba(249,115,22,0.3)" }}>🚛</div>
+        <h3 style={{ color: "#F1F5F9", fontSize: 18, fontWeight: 800, margin: "0 0 2px" }}>田中 太郎</h3>
+        <p style={{ color: "#64748B", fontSize: 12, margin: 0 }}>大型・けん引ドライバー歴15年</p>
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 10 }}><Badge color="#F97316">ゴールドドライバー</Badge><Badge color="#10B981">無事故・無違反</Badge></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 16 }}>
+        {[{ label: "完了案件", val: "24", unit: "件" }, { label: "総走行距離", val: "8,520", unit: "km" }, { label: "評価", val: "4.7", unit: "★" }, { label: "リピート率", val: "62", unit: "%" }].map((s, i) => (
+          <div key={i} style={{ background: "rgba(17,24,39,0.8)", borderRadius: 12, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.05)", textAlign: "center" }}>
+            <div style={{ color: "#64748B", fontSize: 10 }}>{s.label}</div><div style={{ color: "#F1F5F9", fontSize: 22, fontWeight: 900 }}>{s.val}<span style={{ fontSize: 11, color: "#94A3B8" }}>{s.unit}</span></div>
+          </div>
+        ))}
+      </div>
+      {[{ icon: "💰", label: "報酬・振込設定", desc: "早期振込・定期振込" }, { icon: "🏥", label: "健康管理", desc: "アルコールチェック履歴" }, { icon: "📊", label: "運行記録", desc: "過去の運行データ" }, { icon: "🔔", label: "通知設定", desc: "新着求人通知" }, { icon: "🆘", label: "緊急連絡先", desc: "事故・故障時" }].map((item, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}>
+          <span style={{ fontSize: 20 }}>{item.icon}</span><div style={{ flex: 1 }}><div style={{ color: "#E2E8F0", fontSize: 13, fontWeight: 600 }}>{item.label}</div><div style={{ color: "#64748B", fontSize: 11 }}>{item.desc}</div></div><span style={{ color: "#374151", fontSize: 14 }}>›</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState("search");
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [userLicenses, setUserLicenses] = useState(["large", "trailer"]);
+  const [appliedJobs, setAppliedJobs] = useState([]);
+  const contentRef = useRef(null);
+
+  const handleApply = (job) => setAppliedJobs(prev => [...prev, job]);
+
+  useEffect(() => { if (contentRef.current) contentRef.current.scrollTop = 0; }, [tab, selectedJob]);
+
+  const renderScreen = () => {
+    if (selectedJob) return <JobDetailScreen job={selectedJob} onBack={() => setSelectedJob(null)} userLicenses={userLicenses} onApply={handleApply} />;
+    switch (tab) {
+      case "search": return <JobListScreen onSelectJob={setSelectedJob} userLicenses={userLicenses} />;
+      case "schedule": return <ScheduleScreen appliedJobs={appliedJobs} />;
+      case "license": return <LicenseScreen userLicenses={userLicenses} setUserLicenses={setUserLicenses} />;
+      case "profile": return <ProfileScreen />;
+      default: return <JobListScreen onSelectJob={setSelectedJob} userLicenses={userLicenses} />;
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 430, width: "100%", height: "100vh", background: "#0F172A", position: "relative", display: "flex", flexDirection: "column" }}>
+      <div ref={contentRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch" }}>
+        {renderScreen()}
+        <div style={{ height: 80 }} />
+      </div>
+      {!selectedJob && (
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(15,23,42,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "space-around", padding: "6px 0 10px", zIndex: 50 }}>
+          {TABS.map(t => {
+            const active = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => { setTab(t.id); setSelectedJob(null); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "4px 8px", minWidth: 56, opacity: active ? 1 : 0.5 }}>
+                <span style={{ fontSize: 20, filter: active ? "none" : "grayscale(0.5)" }}>{t.icon}</span>
+                <span style={{ fontSize: 9, color: active ? "#F97316" : "#64748B", fontWeight: active ? 700 : 400, letterSpacing: 0.5 }}>{t.label}</span>
+                {active && <div style={{ width: 16, height: 2, borderRadius: 1, background: "#F97316", marginTop: 1 }} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === Supabase Integration ===
+// Supabaseからデータを読み込み、認証状態を管理
+const sb = (typeof SUPABASE_URL !== 'undefined' && SUPABASE_URL !== 'https://xxxxxxxx.supabase.co')
+  ? window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+// Load jobs from Supabase (falls back to MOCK_JOBS if not configured)
+async function loadJobsFromDB() {
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.from('jobs').select('*, companies(name, rating, review_count)').eq('status', 'open');
+    if (error || !data || data.length === 0) return null;
+    return data.map(j => ({
+      id: j.id, company: j.companies?.name || '不明', companyRating: parseFloat(j.companies?.rating) || 0,
+      reviewCount: j.companies?.review_count || 0, title: j.title, vehicleType: j.vehicle_type,
+      date: j.date, timeSlot: j.time_start?.slice(0,5) + '〜' + j.time_end?.slice(0,5),
+      hours: j.hours || 8, pay: j.pay, payType: j.pay_type || '日給', area: j.area,
+      pickup: j.pickup_location, dropoff: j.dropoff_location, distance: j.distance || '',
+      requiredLicenses: j.required_licenses || [], loading: j.loading_method || '',
+      cargo: j.cargo || '', hasHighway: j.has_highway, hasNightDrive: j.has_night_drive,
+      hasOvertime: j.has_overtime, description: j.description || '',
+      vehicleSpec: j.vehicle_spec || '', urgent: j.is_urgent, repeatAvailable: j.repeat_available,
+    }));
+  } catch(e) { console.log('DB load failed, using mock data'); return null; }
+}
+
+// Check auth and render
+async function initApp() {
+  let dbJobs = await loadJobsFromDB();
+  if (dbJobs && dbJobs.length > 0) {
+    // Replace MOCK_JOBS with real data
+    MOCK_JOBS.length = 0;
+    dbJobs.forEach(j => MOCK_JOBS.push(j));
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+}
+initApp();
+</script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0F172A">
+<title>HAKOBU - ログイン</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0F172A; font-family: 'Noto Sans JP', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.container { max-width: 400px; width: 100%; padding: 20px; }
+.logo { text-align: center; margin-bottom: 40px; }
+.logo h1 { font-size: 32px; font-weight: 900; color: #F97316; letter-spacing: 4px; }
+.logo p { color: #64748B; font-size: 12px; margin-top: 4px; letter-spacing: 1px; }
+.card { background: rgba(17,24,39,0.8); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 28px; }
+.tabs { display: flex; gap: 0; margin-bottom: 24px; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 3px; }
+.tab { flex: 1; padding: 10px; text-align: center; color: #64748B; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; border: none; background: none; transition: all 0.2s; }
+.tab.active { background: #F97316; color: #fff; }
+.field { margin-bottom: 16px; }
+.field label { display: block; color: #94A3B8; font-size: 12px; margin-bottom: 6px; font-weight: 500; }
+.field input, .field select { width: 100%; padding: 12px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #E2E8F0; font-size: 14px; outline: none; font-family: inherit; }
+.field input:focus, .field select:focus { border-color: #F97316; }
+.field select option { background: #1E293B; }
+.btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 800; cursor: pointer; letter-spacing: 1px; transition: all 0.2s; font-family: inherit; }
+.btn-primary { background: linear-gradient(135deg, #F97316, #EA580C); color: #fff; box-shadow: 0 4px 20px rgba(249,115,22,0.3); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(249,115,22,0.4); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+.msg.error { display: block; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #EF4444; }
+.msg.success { display: block; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: #10B981; }
+.divider { text-align: center; color: #4B5563; font-size: 12px; margin: 20px 0; position: relative; }
+.divider::before, .divider::after { content: ''; position: absolute; top: 50%; width: 40%; height: 1px; background: #1F2937; }
+.divider::before { left: 0; }
+.divider::after { right: 0; }
+.footer { text-align: center; margin-top: 20px; }
+.footer a { color: #64748B; font-size: 12px; text-decoration: none; }
+.footer a:hover { color: #F97316; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">
+    <div style="font-size: 48px; margin-bottom: 8px;">🚛</div>
+    <h1>HAKOBU</h1>
+    <p>大型トラック・特殊車両ドライバー専門</p>
+  </div>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('login')">ログイン</button>
+      <button class="tab" onclick="switchTab('signup')">新規登録</button>
+    </div>
+
+    <div id="message" class="msg"></div>
+
+    <!-- Login Form -->
+    <div id="login-form">
+      <div class="field">
+        <label>メールアドレス</label>
+        <input type="email" id="login-email" placeholder="example@email.com">
+      </div>
+      <div class="field">
+        <label>パスワード</label>
+        <input type="password" id="login-password" placeholder="パスワード">
+      </div>
+      <button class="btn btn-primary" onclick="handleLogin()" id="login-btn">ログイン</button>
+    </div>
+
+    <!-- Signup Form -->
+    <div id="signup-form" style="display:none;">
+      <div class="field">
+        <label>アカウント種別</label>
+        <select id="signup-type">
+          <option value="driver">ドライバー（仕事を探す）</option>
+          <option value="company">事業者（求人を出す）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>名前</label>
+        <input type="text" id="signup-name" placeholder="山田 太郎">
+      </div>
+      <div class="field">
+        <label>メールアドレス</label>
+        <input type="email" id="signup-email" placeholder="example@email.com">
+      </div>
+      <div class="field">
+        <label>パスワード（8文字以上）</label>
+        <input type="password" id="signup-password" placeholder="パスワード">
+      </div>
+      <button class="btn btn-primary" onclick="handleSignup()" id="signup-btn">無料で登録する</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="privacy.html">プライバシーポリシー</a>
+  </div>
+</div>
+
+<script>
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', (tab === 'login' && i === 0) || (tab === 'signup' && i === 1));
+  });
+  document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
+  hideMessage();
+}
+
+function showMessage(text, type) {
+  const msg = document.getElementById('message');
+  msg.textContent = text;
+  msg.className = 'msg ' + type;
+}
+function hideMessage() {
+  document.getElementById('message').className = 'msg';
+}
+
+async function handleLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { showMessage('メールアドレスとパスワードを入力してください', 'error'); return; }
+
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'ログイン中...';
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    showMessage('ログインに失敗しました: ' + error.message, 'error');
+    btn.disabled = false; btn.textContent = 'ログイン';
+    return;
+  }
+  showMessage('ログイン成功！リダイレクト中...', 'success');
+  setTimeout(() => { window.location.href = '/'; }, 1000);
+}
+
+async function handleSignup() {
+  const type = document.getElementById('signup-type').value;
+  const name = document.getElementById('signup-name').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+
+  if (!name || !email || !password) { showMessage('すべての項目を入力してください', 'error'); return; }
+  if (password.length < 8) { showMessage('パスワードは8文字以上で入力してください', 'error'); return; }
+
+  const btn = document.getElementById('signup-btn');
+  btn.disabled = true; btn.textContent = '登録中...';
+
+  const { data, error } = await supabase.auth.signUp({
+    email, password,
+    options: { data: { name, account_type: type } }
+  });
+
+  if (error) {
+    showMessage('登録に失敗しました: ' + error.message, 'error');
+    btn.disabled = false; btn.textContent = '無料で登録する';
+    return;
+  }
+
+  // Create profile in appropriate table
+  if (data.user) {
+    if (type === 'driver') {
+      await supabase.from('drivers').insert({ user_id: data.user.id, name, email });
+    } else {
+      await supabase.from('companies').insert({ user_id: data.user.id, name, email });
+    }
+  }
+
+  showMessage('登録完了！確認メールを送信しました。メールのリンクをクリックしてください。', 'success');
+  btn.disabled = false; btn.textContent = '無料で登録する';
+}
+
+// Check if already logged in
+supabase.auth.getSession().then(({ data }) => {
+  if (data.session) window.location.href = '/';
+});
+</script>
+</body>
+</html>
